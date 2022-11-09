@@ -11,7 +11,7 @@ find_package(Boost COMPONENTS system REQUIRED)
 add_subdirectory(external)
 
 add_executable(court_monitor
-	Asio.cpp
+	Bot.cpp
 	CourtApi.cpp
 	Storage.cpp
 	main.cpp

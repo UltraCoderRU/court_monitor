@@ -1,12 +1,13 @@
-#include "Asio.h"
+#include "Bot.h"
 #include "CourtApi.h"
 #include "Storage.h"
 
 #include <banana/agent/beast.hpp>
 #include <banana/api.hpp>
-#include <fmt/format.h>
+#include <fmt/core.h>
 #include <nlohmann/json.hpp>
 
+#include <boost/asio/io_context.hpp>
 #include <boost/asio/system_timer.hpp>
 
 #include <chrono>
@@ -14,49 +15,9 @@
 #include <ctime>
 #include <string>
 
-struct CaseHistoryItem
-{
-	std::string date;
-	std::string time;
-	std::string status;
-	std::string publishDate;
-	std::string publishTime;
-};
+boost::asio::io_context asioContext;
 
-std::vector<CaseHistoryItem> parseHistory(const nlohmann::json& details)
-{
-	std::vector<CaseHistoryItem> items;
-	const auto& history = details.at("history");
-	for (const auto& obj : history)
-	{
-		CaseHistoryItem item;
-		item.date = obj.at("date").get<std::string>();
-		item.time = obj.at("time").get<std::string>();
-		item.status = obj.at("status").get<std::string>();
-		item.publishDate = obj.at("publish_date").get<std::string>();
-		item.publishTime = obj.at("publish_time").get<std::string>();
-		items.push_back(std::move(item));
-	}
-	return items;
-}
-
-void notifyUser(banana::agent::beast_callback& bot,
-                int userId,
-                const std::string& caseNumber,
-                std::string caseUrl,
-                const CaseHistoryItem& item)
-{
-	caseUrl = fmt::format("https://mirsud.spb.ru{}", caseUrl);
-	std::string message = fmt::format(
-	    "Новое событие по делу [№{}]({}):\n"
-	    "{}\n"
-	    "Дата: {} {}\n",
-	    caseNumber, caseUrl, item.status, item.date, item.time);
-	banana::api::send_message(bot, {.chat_id = userId, .text = message, .parse_mode = "markdown"},
-	                          [](const auto&) {});
-}
-
-void processAllSubscriptions(LocalStorage& storage, banana::agent::beast_callback& bot)
+void processAllSubscriptions(LocalStorage& storage, Bot& bot)
 {
 	for (auto& subscription : storage.subscriptions)
 	{
@@ -66,13 +27,13 @@ void processAllSubscriptions(LocalStorage& storage, banana::agent::beast_callbac
 			for (auto& counter : subscription.counters)
 			{
 				fmt::print("** Processing case {}\n", counter.caseNumber);
-				auto details = getCaseDetails(counter.courtId, counter.caseNumber);
+				auto details = getCaseDetails(asioContext, counter.courtId, counter.caseNumber);
 				fmt::print("{}\n", details.dump());
 				auto url = details["url"].get<std::string>();
 
 				auto history = parseHistory(details);
 				for (std::size_t i = counter.value; i < history.size(); i++)
-					notifyUser(bot, subscription.userId, counter.caseNumber, url, history[i]);
+					bot.notifyUser(subscription.userId, counter.caseNumber, url, history[i]);
 				counter.value = history.size();
 			}
 		}
@@ -80,17 +41,6 @@ void processAllSubscriptions(LocalStorage& storage, banana::agent::beast_callbac
 		{
 			fmt::print(stderr, "{}\n", e.what());
 			continue;
-		}
-	}
-}
-
-void processUpdate(const banana::api::update_t& update)
-{
-	if (update.message)
-	{
-		if (update.message->text)
-		{
-			fmt::print("rx: {}\n", *update.message->text);
 		}
 	}
 }
@@ -116,39 +66,6 @@ void handleSignal(int)
 	asioContext.stop();
 }
 
-int64_t offset = 0;
-
-void getUpdates(banana::agent::beast_callback& bot);
-
-void processUpdates(banana::agent::beast_callback bot,
-                    banana::expected<banana::array_t<banana::api::update_t>> updates)
-{
-	if (terminate)
-	{
-		fmt::print("exit\n");
-		return;
-	}
-
-	if (updates)
-	{
-		for (const auto& update : *updates)
-		{
-			processUpdate(update);
-			offset = update.update_id + 1;
-		}
-	}
-	else
-		fmt::print(stderr, "failed to get updates: {}\n", updates.error());
-
-	getUpdates(bot);
-}
-
-void getUpdates(banana::agent::beast_callback& bot)
-{
-	banana::api::get_updates(bot, {.offset = offset, .timeout = 50},
-	                         [bot](auto updates) { processUpdates(bot, std::move(updates)); });
-}
-
 int main()
 {
 	std::signal(SIGTERM, handleSignal);
@@ -160,11 +77,9 @@ int main()
 		loadStorage(storage);
 		fmt::print("Storage loaded\n");
 
-		// Инициализировать SSL
-		initSSL();
-
 		// Создать бота
-		banana::agent::beast_callback bot(storage.token, asioContext, sslContext);
+		Bot bot(asioContext, storage, terminate);
+		bot.setupCommands();
 
 		// Создать таймер ежедневной проверки
 		boost::asio::system_timer checkTimer(asioContext);
@@ -180,9 +95,6 @@ int main()
 		};
 		checkTimer.expires_at(getNextCheckTime(storage.checkTime));
 		checkTimer.async_wait(onTimer);
-
-		// Запустить асинхронное получение обновлений
-		getUpdates(bot);
 
 		// Запустить цикл обработки событий
 		asioContext.run();

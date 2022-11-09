@@ -1,10 +1,9 @@
 #include "CourtApi.h"
 
-#include "Asio.h"
-
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
+#include <boost/asio/ssl/context.hpp>
 #include <boost/asio/ssl/stream.hpp>
 #include <boost/beast.hpp>
 #include <boost/certify/extensions.hpp>
@@ -15,10 +14,17 @@
 
 const char* serverDomain = "mirsud.spb.ru";
 
+namespace {
+boost::asio::ssl::context sslContext(boost::asio::ssl::context::tlsv13_client);
 using ssl_stream = boost::asio::ssl::stream<boost::beast::tcp_stream>;
+} // namespace
 
-ssl_stream connect(const std::string& hostname)
+ssl_stream connect(boost::asio::io_context& asioContext, const std::string& hostname)
 {
+	sslContext.set_verify_mode(boost::asio::ssl::verify_peer |
+	                           boost::asio::ssl::verify_fail_if_no_peer_cert);
+	sslContext.set_default_verify_paths();
+	boost::certify::enable_native_https_server_verification(sslContext);
 	ssl_stream stream(asioContext, sslContext);
 
 	static boost::asio::ip::tcp::resolver resolver(asioContext);
@@ -77,9 +83,11 @@ nlohmann::json getResults(ssl_stream& stream, const std::string_view& uuid)
 		    fmt::format("failed to retrieve JSON (server returned code {})", status));
 }
 
-nlohmann::json getCaseDetails(int courtId, const std::string_view& caseNumber)
+nlohmann::json getCaseDetails(boost::asio::io_context& asioContext,
+                              int courtId,
+                              const std::string_view& caseNumber)
 {
-	ssl_stream stream = connect(serverDomain);
+	ssl_stream stream = connect(asioContext, serverDomain);
 
 	int status;
 	std::string result;
@@ -104,4 +112,21 @@ nlohmann::json getCaseDetails(int courtId, const std::string_view& caseNumber)
 	else
 		throw std::runtime_error(
 		    fmt::format("failed to retrieve JSON (server returned code {})", status));
+}
+
+std::vector<CaseHistoryItem> parseHistory(const nlohmann::json& details)
+{
+	std::vector<CaseHistoryItem> items;
+	const auto& history = details.at("history");
+	for (const auto& obj : history)
+	{
+		CaseHistoryItem item;
+		item.date = obj.at("date").get<std::string>();
+		item.time = obj.at("time").get<std::string>();
+		item.status = obj.at("status").get<std::string>();
+		item.publishDate = obj.at("publish_date").get<std::string>();
+		item.publishTime = obj.at("publish_time").get<std::string>();
+		items.push_back(std::move(item));
+	}
+	return items;
 }
