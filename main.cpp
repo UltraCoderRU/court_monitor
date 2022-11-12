@@ -1,10 +1,10 @@
 #include "Bot.h"
 #include "CourtApi.h"
+#include "Logger.h"
 #include "Storage.h"
 
 #include <banana/agent/beast.hpp>
 #include <banana/api.hpp>
-#include <fmt/core.h>
 #include <nlohmann/json.hpp>
 
 #include <boost/asio/io_context.hpp>
@@ -23,12 +23,12 @@ void processAllSubscriptions(LocalStorage& storage, Bot& bot)
 	{
 		try
 		{
-			fmt::print("* Processing subscriptions for user {}\n", subscription.userId);
+			LOG(main, "* Processing subscriptions for user {}", subscription.userId);
 			for (auto& counter : subscription.counters)
 			{
-				fmt::print("** Processing case {}\n", counter.caseNumber);
+				LOG(main, "** Processing case {}", counter.caseNumber);
 				auto details = getCaseDetails(asioContext, counter.courtId, counter.caseNumber);
-				fmt::print("{}\n", details.dump());
+				LOG(main, details.dump());
 				auto url = details["url"].get<std::string>();
 
 				auto history = parseHistory(details);
@@ -39,7 +39,7 @@ void processAllSubscriptions(LocalStorage& storage, Bot& bot)
 		}
 		catch (const std::exception& e)
 		{
-			fmt::print(stderr, "{}\n", e.what());
+			LOG(main, e.what());
 			continue;
 		}
 	}
@@ -60,7 +60,7 @@ bool terminate = false;
 
 void handleSignal(int)
 {
-	fmt::print("signal!\n");
+	LOG(main, "signal!");
 	terminate = true;
 	asioWork.reset();
 	asioContext.stop();
@@ -75,7 +75,7 @@ int main()
 		// Загрузить данные из локального хранилища
 		LocalStorage storage;
 		loadStorage(storage);
-		fmt::print("Storage loaded\n");
+		LOG(main, "Storage loaded");
 
 		// Создать бота
 		Bot bot(asioContext, storage, terminate);
@@ -100,13 +100,13 @@ int main()
 		asioContext.run();
 
 		// Сохранить данные в локальное хранилище
-		fmt::print("Saving storage\n");
+		LOG(main, "Saving storage");
 		saveStorage(storage);
 		return 0;
 	}
 	catch (const std::exception& e)
 	{
-		fmt::print(stderr, "{}\n", e.what());
+		LOG(stderr, "{}\n", e.what());
 		return 1;
 	}
 }

@@ -1,5 +1,7 @@
 #include "Bot.h"
 
+#include "Logger.h"
+
 #include <banana/api.hpp>
 #include <fmt/format.h>
 
@@ -28,9 +30,9 @@ void Bot::setupCommands()
 	                             [](banana::expected<banana::boolean_t> result)
 	                             {
 		                             if (result)
-			                             fmt::print("commands set up successfully\n");
+			                             LOG(bot, "commands set up successfully");
 		                             else
-			                             fmt::print(stderr, "failed to set up commands\n");
+			                             LOGE(bot, "failed to set up commands");
 	                             });
 }
 
@@ -66,7 +68,7 @@ void Bot::getUpdates()
 			getUpdates();
 		}
 		else
-			fmt::print(stderr, "failed to get updates: {}\n", updates.error());
+			LOG(bot, "failed to get updates: {}", updates.error());
 	};
 
 	banana::api::get_updates(agent_, {.offset = updatesOffset_, .timeout = 50}, std::move(handler));
@@ -78,7 +80,7 @@ void Bot::processUpdate(const banana::api::update_t& update)
 	{
 		if (update.message->text)
 		{
-			fmt::print("rx: {}\n", *update.message->text);
+			LOG(bot, "rx: {}\n", *update.message->text);
 			if (*update.message->text == "/start")
 				processStartCommand(*update.message);
 			else if (*update.message->text == "/subscribe_case")
@@ -89,10 +91,10 @@ void Bot::processUpdate(const banana::api::update_t& update)
 			}
 		}
 		else
-			fmt::print("skip message without text"); // TODO ответить
+			LOG(bot, "skip message without text"); // TODO ответить
 	}
 	else
-		fmt::print("skip unknown update type");
+		LOGE(bot, "skip unknown update type");
 }
 
 void Bot::processStartCommand(const banana::api::message_t& message)

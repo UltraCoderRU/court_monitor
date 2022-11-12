@@ -13,6 +13,7 @@ add_subdirectory(external)
 add_executable(court_monitor
 	Bot.cpp
 	CourtApi.cpp
+	Logger.cpp
 	Storage.cpp
 	main.cpp
 	)
