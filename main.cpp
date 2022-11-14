@@ -79,7 +79,6 @@ int main()
 
 		// Создать бота
 		Bot bot(asioContext, storage, terminate);
-		bot.setupCommands();
 
 		// Создать таймер ежедневной проверки
 		boost::asio::system_timer checkTimer(asioContext);

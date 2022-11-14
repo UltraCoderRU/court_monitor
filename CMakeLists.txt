@@ -12,9 +12,12 @@ add_subdirectory(external)
 
 add_executable(court_monitor
 	Bot.cpp
+	BotSession.cpp
 	CourtApi.cpp
+	Dialog.cpp
 	Logger.cpp
 	Storage.cpp
+	SubscribeCaseDialog.cpp
 	main.cpp
 	)
 target_link_libraries(court_monitor

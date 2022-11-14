@@ -16,15 +16,19 @@ Bot::Bot(boost::asio::io_context& asioContext, LocalStorage& storage, bool& term
       terminationFlag_(terminationFlag),
       agent_(storage.token, asioContext, sslContext)
 {
+	setupCommands();
 	getUpdates();
 }
 
 void Bot::setupCommands()
 {
 	banana::api::set_my_commands_args_t args;
-	args.commands.push_back(banana::api::bot_command_t{
-	    "/subscribe_case", "Подписаться на обновления дела по его номеру"});
-	args.commands.push_back(banana::api::bot_command_t{"/find_case", "Найти дело по параметрам"});
+	args.commands.push_back(
+	    banana::api::bot_command_t{"/subscribe_case", "Подписаться на обновления дела"});
+	args.commands.push_back(
+	    banana::api::bot_command_t{"/unsubscribe_case", "Отписаться от обновлений дела"});
+	args.commands.push_back(banana::api::bot_command_t{"/check_case", "Проверить дело"});
+	args.commands.push_back(banana::api::bot_command_t{"/find_case", "Найти дело"});
 	args.scope = banana::api::bot_command_scope_all_private_chats_t{"all_private_chats"};
 	banana::api::set_my_commands(agent_, std::move(args),
 	                             [](banana::expected<banana::boolean_t> result)
@@ -68,39 +72,53 @@ void Bot::getUpdates()
 			getUpdates();
 		}
 		else
-			LOG(bot, "failed to get updates: {}", updates.error());
+			LOGE(bot, "failed to get updates: {}", updates.error());
 	};
 
-	banana::api::get_updates(agent_, {.offset = updatesOffset_, .timeout = 50}, std::move(handler));
+	banana::api::get_updates(
+	    agent_,
+	    {.offset = updatesOffset_,
+	     .timeout = 50,
+	     .allowed_updates = banana::array_t<banana::string_t>{"message", "callback_query"}},
+	    std::move(handler));
 }
 
 void Bot::processUpdate(const banana::api::update_t& update)
 {
 	if (update.message)
 	{
+		banana::integer_t userId = update.message->from->id;
+
 		if (update.message->text)
-		{
-			LOG(bot, "rx: {}\n", *update.message->text);
-			if (*update.message->text == "/start")
-				processStartCommand(*update.message);
-			else if (*update.message->text == "/subscribe_case")
-				processSubscribeCaseCommand(*update.message);
-			else
-			{
-				// TODO
-			}
-		}
+			LOG(bot, "incoming message: user={} text='{}'", userId, *update.message->text);
 		else
-			LOG(bot, "skip message without text"); // TODO ответить
+			LOG(bot, "incoming message: user={} (not text)", userId);
+
+		auto sessionIt = sessions_.find(userId);
+		if (sessionIt == sessions_.end())
+		{
+			bool ok;
+			std::tie(sessionIt, ok) =
+			    sessions_.emplace(std::piecewise_construct, std::forward_as_tuple(userId),
+			                      std::forward_as_tuple(agent_, userId));
+		}
+		sessionIt->second.processMessage(*update.message);
+	}
+	else if (update.callback_query)
+	{
+		banana::integer_t userId = update.callback_query->from.id;
+		LOG(bot, "incoming callback query: user={} data='{}'", userId, *update.callback_query->data);
+
+		auto sessionIt = sessions_.find(userId);
+		if (sessionIt == sessions_.end())
+		{
+			bool ok;
+			std::tie(sessionIt, ok) =
+			    sessions_.emplace(std::piecewise_construct, std::forward_as_tuple(userId),
+			                      std::forward_as_tuple(agent_, userId));
+		}
+		sessionIt->second.processCallbackQuery(*update.callback_query);
 	}
 	else
-		LOGE(bot, "skip unknown update type");
-}
-
-void Bot::processStartCommand(const banana::api::message_t& message)
-{
-}
-
-void Bot::processSubscribeCaseCommand(const banana::api::message_t& message)
-{
+		LOG(bot, "skip unknown update type");
 }
