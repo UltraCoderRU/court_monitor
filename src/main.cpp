@@ -19,19 +19,20 @@ boost::asio::io_context asioContext;
 
 void processAllSubscriptions(LocalStorage& storage, Bot& bot)
 {
-	for (auto& subscription : storage.subscriptions)
+	for (auto& userData : storage.userData)
 	{
 		try
 		{
-			LOG(main, "* Processing subscriptions for user {}", subscription.userId);
-			for (auto& counter : subscription.counters)
+			const auto& userId = userData.first;
+			LOG(main, "* Processing subscriptions for user {}", userId);
+			for (auto& caseSubscription : userData.second.caseSubscriptions)
 			{
-				LOG(main, "** Processing case {}", counter.caseNumber);
-				auto details = getCaseDetails(asioContext, counter.caseNumber);
-				for (std::size_t i = counter.value; i < details.history.size(); i++)
-					bot.notifyUser(subscription.userId, counter.caseNumber, details.url,
-					               details.history[i]);
-				counter.value = details.history.size();
+				const auto& caseNumber = caseSubscription.first;
+				LOG(main, "** Processing case {}", caseNumber);
+				auto details = getCaseDetails(asioContext, caseNumber);
+				for (std::size_t i = caseSubscription.second.counter; i < details.history.size(); i++)
+					bot.notifyUser(userId, caseNumber, details.url, details.history[i]);
+				caseSubscription.second.counter = details.history.size();
 			}
 		}
 		catch (const std::exception& e)

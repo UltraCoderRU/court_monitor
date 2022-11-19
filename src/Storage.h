@@ -2,26 +2,26 @@
 #define COURT_MONITOR_STORAGE_H
 
 #include <cstddef>
+#include <map>
 #include <string>
 #include <vector>
 
-struct Counter
-{
-	int courtId = 0;
-	std::string caseNumber;
-	std::size_t value = 0;
-};
+using UserId = std::int64_t;
 
-struct Subscription
+struct UserData
 {
-	int userId = 0;
-	std::vector<Counter> counters;
+	struct CaseSubscription
+	{
+		std::size_t counter = 0;
+	};
+
+	std::map<std::string, CaseSubscription> caseSubscriptions;
 };
 
 struct LocalStorage
 {
 	std::string token;
-	std::vector<Subscription> subscriptions;
+	std::map<UserId, UserData> userData;
 	std::uint32_t checkTime; // секунды с 00:00
 };
 

@@ -5,7 +5,7 @@
 
 #include <fstream>
 
-using json = nlohmann::json;
+using json = nlohmann::ordered_json;
 
 std::uint32_t parseTime(const std::string& str)
 {
@@ -30,23 +30,22 @@ void loadStorage(LocalStorage& storage)
 	std::ifstream ifs("storage.json");
 	if (ifs.is_open())
 	{
-		auto data = json::parse(ifs);
-		storage.token = data.at("token").get<std::string>();
-		storage.checkTime = parseTime(data.at("check_time").get<std::string>());
+		auto jsonStorage = json::parse(ifs);
+		storage.token = jsonStorage.at("token").get<std::string>();
+		storage.checkTime = parseTime(jsonStorage.at("check_time").get<std::string>());
 
-		for (const auto& subscription : data.at("subscriptions"))
+		for (const auto& jsonUserData : jsonStorage.at("user_data"))
 		{
-			Subscription s;
-			s.userId = subscription.at("user_id");
-			for (const auto& counter : subscription.at("counters"))
+			UserData userData;
+			auto userId = jsonUserData.at("user_id").get<UserId>();
+			for (const auto& jsonCaseSubscription : jsonUserData.at("case_subscriptions"))
 			{
-				Counter c;
-				c.courtId = counter.at("court").get<int>();
-				c.caseNumber = counter.at("case").get<std::string>();
-				c.value = counter.at("value").get<std::size_t>();
-				s.counters.push_back(std::move(c));
+				UserData::CaseSubscription caseSubscription;
+				auto caseNumber = jsonCaseSubscription.at("case").get<std::string>();
+				caseSubscription.counter = jsonCaseSubscription.at("counter").get<std::size_t>();
+				userData.caseSubscriptions[caseNumber] = caseSubscription;
 			}
-			storage.subscriptions.push_back(std::move(s));
+			storage.userData[userId] = std::move(userData);
 		}
 	}
 	else
@@ -55,30 +54,29 @@ void loadStorage(LocalStorage& storage)
 
 void saveStorage(const LocalStorage& storage)
 {
-	json data;
-	data["token"] = storage.token;
-	data["check_time"] = timeToString(storage.checkTime);
+	json jsonStorage;
+	jsonStorage["token"] = storage.token;
+	jsonStorage["check_time"] = timeToString(storage.checkTime);
 
-	data["subscriptions"] = json::array();
-	for (const auto& subscription : storage.subscriptions)
+	jsonStorage["user_data"] = json::array();
+	for (const auto& subscription : storage.userData)
 	{
-		json jsonSubscription;
-		jsonSubscription["user_id"] = subscription.userId;
-		jsonSubscription["counters"] = json::array();
-		for (const auto& counter : subscription.counters)
+		json jsonUserData;
+		jsonUserData["user_id"] = subscription.first;
+		jsonUserData["case_subscriptions"] = json::array();
+		for (const auto& caseSubscription : subscription.second.caseSubscriptions)
 		{
-			json jsonCounter;
-			jsonCounter["court"] = counter.courtId;
-			jsonCounter["case"] = counter.caseNumber;
-			jsonCounter["value"] = counter.value;
-			jsonSubscription["counters"].push_back(std::move(jsonCounter));
+			json jsonCaseSubscription;
+			jsonCaseSubscription["case"] = caseSubscription.first;
+			jsonCaseSubscription["counter"] = caseSubscription.second.counter;
+			jsonUserData["case_subscriptions"].push_back(std::move(jsonCaseSubscription));
 		}
-		data["subscriptions"].push_back(std::move(jsonSubscription));
+		jsonStorage["user_data"].push_back(std::move(jsonUserData));
 	}
 
 	std::ofstream ofs("storage.json");
 	if (ofs.is_open())
-		ofs << std::setw(2) << data;
+		ofs << std::setw(2) << jsonStorage;
 	else
 		throw std::runtime_error("failed to save storage");
 }

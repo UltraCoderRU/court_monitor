@@ -15,7 +15,7 @@ class Bot
 public:
 	explicit Bot(boost::asio::io_context& asioContext, LocalStorage& storage, bool& terminationFlag);
 
-	void notifyUser(int userId,
+	void notifyUser(UserId userId,
 	                const std::string& caseNumber,
 	                std::string caseUrl,
 	                const CaseHistoryItem& item);

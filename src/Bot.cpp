@@ -40,7 +40,7 @@ void Bot::setupCommands()
 	                             });
 }
 
-void Bot::notifyUser(int userId,
+void Bot::notifyUser(UserId userId,
                      const std::string& caseNumber,
                      std::string caseUrl,
                      const CaseHistoryItem& item)

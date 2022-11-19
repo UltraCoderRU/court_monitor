@@ -38,6 +38,7 @@ struct SubscribeCaseStateMachine : StateMachine<SubscribeCaseStateMachine, Waiti
 	}
 	LocalStorage& storage;
 	std::string caseNumber;
+	CaseDetails caseDetails;
 };
 
 namespace {
@@ -87,13 +88,14 @@ struct GettingCaseDetails : State<GettingCaseDetails, SubscribeCaseStateMachine>
 
 		try
 		{
-			auto details = getCaseDetails(ioContext, machine.caseNumber);
+			machine.caseDetails = getCaseDetails(ioContext, machine.caseNumber);
 			std::string text;
-			fmt::format_to(std::back_inserter(text), "Проверьте информацию:\n{}\n", details.name);
-			for (const auto& participant : details.participants)
+			fmt::format_to(std::back_inserter(text), "Проверьте информацию:\n{}\n",
+			               machine.caseDetails.name);
+			for (const auto& participant : machine.caseDetails.participants)
 				fmt::format_to(std::back_inserter(text), "{}: {}\n", participant.title,
 				               participant.name);
-			fmt::format_to(std::back_inserter(text), "Судья: {}", details.judgeName);
+			fmt::format_to(std::back_inserter(text), "Судья: {}", machine.caseDetails.judgeName);
 
 			banana::api::inline_keyboard_markup_t keyboard;
 			keyboard.inline_keyboard.resize(1);
@@ -148,8 +150,10 @@ struct WaitingForConfirmation : State<WaitingForConfirmation, SubscribeCaseState
 
 			if (*event.query.data == "yes")
 			{
-				// TODO
-
+				auto& userData = machine.storage.userData[machine.userId];
+				userData.caseSubscriptions[machine.caseNumber].counter =
+				    machine.caseDetails.history.size();
+				saveStorage(machine.storage);
 				return transit<Subscribed>();
 			}
 			else if (*event.query.data == "no")
