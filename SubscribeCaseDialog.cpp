@@ -5,9 +5,12 @@
 #include "Logger.h"
 
 #include <banana/api.hpp>
+#include <nlohmann/json.hpp>
 
 #include <boost/statechart/custom_reaction.hpp>
 #include <boost/statechart/event.hpp>
+
+#include <regex>
 
 namespace {
 
@@ -17,6 +20,7 @@ namespace {
 struct WaitingForInput;
 struct GettingCaseDetails;
 struct WaitingForConfirmation;
+struct Subscribed;
 
 // События
 struct CaseDetailsFetched : statechart::event<CaseDetailsFetched> { };
@@ -28,7 +32,12 @@ struct SubscriptionConfirmed : statechart::event<SubscriptionConfirmed> { };
 
 struct SubscribeCaseStateMachine : StateMachine<SubscribeCaseStateMachine, WaitingForInput>
 {
-	using StateMachine::StateMachine;
+	SubscribeCaseStateMachine(banana::agent::beast_callback& agent, long userId, LocalStorage& storage)
+	    : StateMachine(agent, userId), storage(storage)
+	{
+	}
+	LocalStorage& storage;
+	std::string caseNumber;
 };
 
 namespace {
@@ -39,24 +48,122 @@ struct WaitingForInput : State<WaitingForInput, SubscribeCaseStateMachine>
 
 	explicit WaitingForInput(const my_context& ctx) : State(ctx, "WaitingForInput")
 	{
-		auto& dialog = context<SubscribeCaseStateMachine>().dialog;
-		std::string text = "Введите номер дела";
-		banana::api::send_message(dialog.getAgent(),
-		                          {.chat_id = dialog.getUserId(), .text = std::move(text)},
-		                          [](auto) {});
+		auto& machine = context<SubscribeCaseStateMachine>();
+		std::string text = "Введите номер дела...";
+		banana::api::send_message(machine.agent,
+		                          {.chat_id = machine.userId, .text = std::move(text)}, [](auto) {});
 	}
 
-	statechart::result react(const NewMessageEvent& event) { return transit<GettingCaseDetails>(); }
+	statechart::result react(const NewMessageEvent& event)
+	{
+		auto& machine = context<SubscribeCaseStateMachine>();
+		const std::regex rex(R"(\d-(?:\d+)/(?:\d){4}-(?:\d+))");
+		std::smatch captures;
+		if (std::regex_match(*event.message.text, captures, rex))
+		{
+			machine.caseNumber = *event.message.text;
+			return transit<GettingCaseDetails>();
+		}
+		else
+		{
+			std::string text =
+			    "Некорректный формат номера дела!\n"
+			    "Попробуйте еще раз.";
+			banana::api::send_message(
+			    machine.agent, {.chat_id = machine.userId, .text = std::move(text)}, [](auto) {});
+			return discard_event();
+		}
+	}
 };
 
-struct GettingCaseDetails : State<GettingCaseDetails, SubscribeCaseStateMachine, true>
+struct GettingCaseDetails : State<GettingCaseDetails, SubscribeCaseStateMachine>
 {
-	explicit GettingCaseDetails(const my_context& ctx) : State(ctx, "GettingCaseDetails") {}
+	using reactions = statechart::custom_reaction<CaseDetailsFetched>;
+
+	explicit GettingCaseDetails(const my_context& ctx) : State(ctx, "GettingCaseDetails")
+	{
+		auto& machine = context<SubscribeCaseStateMachine>();
+		boost::asio::io_context ioContext;
+
+		try
+		{
+			auto details = getCaseDetails(ioContext, machine.caseNumber);
+			std::string text;
+			fmt::format_to(std::back_inserter(text), "Проверьте информацию:\n{}\n", details.name);
+			for (const auto& participant : details.participants)
+				fmt::format_to(std::back_inserter(text), "{}: {}\n", participant.title,
+				               participant.name);
+			fmt::format_to(std::back_inserter(text), "Судья: {}", details.judgeName);
+
+			banana::api::inline_keyboard_markup_t keyboard;
+			keyboard.inline_keyboard.resize(1);
+			keyboard.inline_keyboard[0].resize(2);
+
+			keyboard.inline_keyboard[0][0].text = "Верно";
+			keyboard.inline_keyboard[0][0].callback_data = "yes";
+			keyboard.inline_keyboard[0][1].text = "Отмена";
+			keyboard.inline_keyboard[0][1].callback_data = "no";
+
+			banana::api::send_message(
+			    machine.agent,
+			    {.chat_id = machine.userId, .text = std::move(text), .reply_markup = keyboard},
+			    [](auto) {});
+
+			post_event(CaseDetailsFetched());
+		}
+		catch (const std::exception& e)
+		{
+			LOGE(dialog, e.what());
+			// TODO ???
+		}
+	}
+
+	statechart::result react(const CaseDetailsFetched& event)
+	{
+		return transit<WaitingForConfirmation>();
+	}
 };
 
 struct WaitingForConfirmation : State<WaitingForConfirmation, SubscribeCaseStateMachine>
 {
+	using reactions = statechart::custom_reaction<NewCallbackQueryEvent>;
+
 	explicit WaitingForConfirmation(const my_context& ctx) : State(ctx, "WaitingForConfirmation") {}
+
+	statechart::result react(const NewCallbackQueryEvent& event)
+	{
+		auto& machine = context<SubscribeCaseStateMachine>();
+		if (event.query.data)
+		{
+			if (event.query.message)
+				banana::api::edit_message_reply_markup(
+				    machine.agent,
+				    {.chat_id = event.query.message->chat.id,
+				     .message_id = event.query.message->message_id},
+				    [](banana::expected<banana::variant_t<banana::api::message_t, banana::boolean_t>> result)
+				    {
+					    if (!result)
+						    LOGE(dialog, result.error());
+				    });
+
+			if (*event.query.data == "yes")
+			{
+				// TODO
+
+				return transit<Subscribed>();
+			}
+			else if (*event.query.data == "no")
+			{
+				return transit<WaitingForInput>();
+			}
+		}
+		return discard_event();
+	}
+};
+
+struct Subscribed : State<Subscribed, SubscribeCaseStateMachine, true>
+{
+	explicit Subscribed(const my_context& ctx) : State(ctx, "Subscribed") {}
 };
 
 } // namespace
@@ -64,9 +171,10 @@ struct WaitingForConfirmation : State<WaitingForConfirmation, SubscribeCaseState
 /////////////////////////////////////////////////////////////////////////////
 
 SubscribeCaseDialog::SubscribeCaseDialog(banana::agent::beast_callback& agent,
-                                         banana::integer_t userId)
-    : Dialog(agent, userId, "SubscribeCase"),
-      machine_(std::make_unique<SubscribeCaseStateMachine>(*this))
+                                         banana::integer_t userId,
+                                         LocalStorage& storage)
+    : Dialog(userId, "SubscribeCase"),
+      machine_(std::make_unique<SubscribeCaseStateMachine>(agent, userId, storage))
 {
 	machine_->initiate();
 }

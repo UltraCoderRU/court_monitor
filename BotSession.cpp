@@ -1,13 +1,16 @@
 #include "BotSession.h"
 
 #include "Logger.h"
+#include "Storage.h"
 #include "SubscribeCaseDialog.h"
 
 #include <banana/api.hpp>
 #include <fmt/core.h>
 
-BotSession::BotSession(banana::agent::beast_callback& agent, banana::integer_t userId)
-    : agent_(agent), userId_(userId)
+BotSession::BotSession(banana::agent::beast_callback& agent,
+                       banana::integer_t userId,
+                       LocalStorage& storage)
+    : agent_(agent), userId_(userId), storage_(storage)
 {
 	LOG(session, "new session created for user {}", userId_);
 }
@@ -20,9 +23,9 @@ void BotSession::processMessage(const banana::api::message_t& message)
 	{
 		auto text = *message.text;
 		if (text == "/start")
-			processStartCommand(message);
+			processStartCommand();
 		else if (text == "/stop")
-			processStopCommand(message);
+			processStopCommand();
 		else if (text == "/subscribe_case")
 			activeDialog_ = makeDialog<SubscribeCaseDialog>();
 		else if (activeDialog_)
@@ -30,13 +33,13 @@ void BotSession::processMessage(const banana::api::message_t& message)
 			if (activeDialog_->processMessage(message))
 			{
 				// TODO
-				processStartCommand(message);
+				processStartCommand();
 			}
 		}
 		else
 		{
 			// TODO
-			processStartCommand(message);
+			processStartCommand();
 		}
 	}
 	else
@@ -45,9 +48,21 @@ void BotSession::processMessage(const banana::api::message_t& message)
 
 void BotSession::processCallbackQuery(const banana::api::callback_query_t& query)
 {
+	if (query.data)
+	{
+		if (activeDialog_)
+		{
+			if (activeDialog_->processCallbackQuery(query))
+				processStartCommand();
+		}
+		else
+			LOGE(session, "skip callback query, because there is no active dialog");
+	}
+	else
+		LOGE(session, "skip callback query without data");
 }
 
-void BotSession::processStartCommand(const banana::api::message_t& message)
+void BotSession::processStartCommand()
 {
 	activeDialog_.reset();
 
@@ -59,7 +74,7 @@ void BotSession::processStartCommand(const banana::api::message_t& message)
 	                          [](const banana::expected<banana::api::message_t>& message) {});
 }
 
-void BotSession::processStopCommand(const banana::api::message_t& message)
+void BotSession::processStopCommand()
 {
 	activeDialog_.reset();
 }

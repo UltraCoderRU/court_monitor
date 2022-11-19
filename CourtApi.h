@@ -9,6 +9,12 @@
 #include <string_view>
 #include <vector>
 
+struct CaseParticipant
+{
+	std::string title;
+	std::string name;
+};
+
 struct CaseHistoryItem
 {
 	std::string date;
@@ -18,12 +24,29 @@ struct CaseHistoryItem
 	std::string publishTime;
 };
 
-nlohmann::json findCases(boost::asio::io_context& asioContext, const std::string_view& name);
+struct CaseDetails
+{
+	std::string id;
+	std::string courtNumber;
+	std::string name;
+	std::string description;
+	std::string url;
 
-nlohmann::json getCaseDetails(boost::asio::io_context& asioContext,
-                              int courtId,
-                              const std::string_view& caseNumber);
+	std::string districtName;
+	std::string judgeName;
+	std::vector<CaseParticipant> participants;
 
-std::vector<CaseHistoryItem> parseHistory(const nlohmann::json& details);
+	std::string status;
+	std::vector<CaseHistoryItem> history;
+
+	std::string createdDate;
+	std::string acceptedDate;
+	std::string judicialUid;
+};
+
+std::vector<CaseDetails> findCases(boost::asio::io_context& asioContext,
+                                   const std::string_view& name);
+
+CaseDetails getCaseDetails(boost::asio::io_context& asioContext, const std::string_view& caseNumber);
 
 #endif // COURT_MONITOR_COURT_API_H

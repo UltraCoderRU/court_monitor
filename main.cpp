@@ -27,14 +27,11 @@ void processAllSubscriptions(LocalStorage& storage, Bot& bot)
 			for (auto& counter : subscription.counters)
 			{
 				LOG(main, "** Processing case {}", counter.caseNumber);
-				auto details = getCaseDetails(asioContext, counter.courtId, counter.caseNumber);
-				LOG(main, details.dump());
-				auto url = details["url"].get<std::string>();
-
-				auto history = parseHistory(details);
-				for (std::size_t i = counter.value; i < history.size(); i++)
-					bot.notifyUser(subscription.userId, counter.caseNumber, url, history[i]);
-				counter.value = history.size();
+				auto details = getCaseDetails(asioContext, counter.caseNumber);
+				for (std::size_t i = counter.value; i < details.history.size(); i++)
+					bot.notifyUser(subscription.userId, counter.caseNumber, details.url,
+					               details.history[i]);
+				counter.value = details.history.size();
 			}
 		}
 		catch (const std::exception& e)

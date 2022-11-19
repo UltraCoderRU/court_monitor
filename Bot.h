@@ -25,6 +25,7 @@ private:
 
 	void getUpdates();
 	void processUpdate(const banana::api::update_t& update);
+	BotSession& getOrCreateSession(banana::integer_t userId);
 
 	LocalStorage& storage_;
 	bool& terminationFlag_;

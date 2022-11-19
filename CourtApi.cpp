@@ -1,5 +1,7 @@
 #include "CourtApi.h"
 
+#include "Logger.h"
+
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
@@ -9,7 +11,6 @@
 #include <boost/certify/extensions.hpp>
 #include <boost/certify/https_verification.hpp>
 
-#include <iostream>
 #include <thread>
 
 const char* serverDomain = "mirsud.spb.ru";
@@ -24,15 +25,16 @@ ssl_stream connect(boost::asio::io_context& asioContext, const std::string& host
 	sslContext.set_verify_mode(boost::asio::ssl::verify_peer |
 	                           boost::asio::ssl::verify_fail_if_no_peer_cert);
 	sslContext.set_default_verify_paths();
+	sslContext.load_verify_file("ISRG_X1.pem");
 	boost::certify::enable_native_https_server_verification(sslContext);
 	ssl_stream stream(asioContext, sslContext);
 
 	static boost::asio::ip::tcp::resolver resolver(asioContext);
 	auto const results = resolver.resolve(hostname, "https");
+	boost::beast::get_lowest_layer(stream).connect(results);
 
 	boost::certify::set_server_hostname(stream, hostname);
 	boost::certify::sni_hostname(stream, hostname);
-	boost::beast::get_lowest_layer(stream).connect(results);
 	stream.handshake(boost::asio::ssl::stream_base::client);
 
 	return stream;
@@ -56,14 +58,11 @@ std::pair<int, std::string> get(ssl_stream& stream,
 		request.body() = std::move(*payload);
 	}
 
-	std::cout << "tx: " << request << std::endl;
-
 	boost::beast::http::write(stream, request);
 
 	boost::beast::http::response<boost::beast::http::string_body> response;
 	boost::beast::flat_buffer buffer;
 	boost::beast::http::read(stream, buffer, response);
-	std::cout << "rx: " << response << std::endl;
 
 	return {response.base().result_int(), response.body()};
 }
@@ -83,27 +82,58 @@ nlohmann::json getResults(ssl_stream& stream, const std::string_view& uuid)
 		    fmt::format("failed to retrieve JSON (server returned code {})", status));
 }
 
-nlohmann::json getCaseDetails(boost::asio::io_context& asioContext,
-                              int courtId,
-                              const std::string_view& caseNumber)
+CaseDetails getCaseDetails(boost::asio::io_context& asioContext, const std::string_view& caseNumber)
 {
 	ssl_stream stream = connect(asioContext, serverDomain);
 
 	int status;
 	std::string result;
 	std::tie(status, result) =
-	    get(stream, serverDomain,
-	        fmt::format("/cases/api/detail/?id={}&court_site_id={}", caseNumber, courtId));
+	    get(stream, serverDomain, fmt::format("/cases/api/detail/?id={}", caseNumber));
 	if (status == 200)
 	{
 		auto uuid = nlohmann::json::parse(result).at("id").get<std::string>();
 
-		for (int i = 0; i < 10; i++)
+		for (int i = 0; i < 5; i++)
 		{
-			auto results = getResults(stream, uuid);
-			bool finished = results.at("finished").get<bool>();
-			if (finished)
-				return results.at("result");
+			auto response = getResults(stream, uuid);
+			if (response.at("finished").get<bool>())
+			{
+				auto& results = response.at("result");
+				LOG(court, results.dump());
+
+				CaseDetails details;
+				details.id = results["id"].get<std::string>();
+				details.courtNumber = results["court_number"].get<std::string>();
+				details.name = results["name"].get<std::string>();
+				details.description = results["description"].get<std::string>();
+				details.url =
+				    fmt::format("https://{}{}", serverDomain, results["url"].get<std::string>());
+
+				details.districtName = results["district_name"].get<std::string>();
+				details.judgeName = results["judge"].get<std::string>();
+
+				for (const auto& participant : results["participants"])
+				{
+					CaseParticipant p;
+					p.title = participant["title"].get<std::string>();
+					p.name = participant["name"].get<std::string>();
+					details.participants.push_back(std::move(p));
+				}
+
+				for (const auto& obj : results["history"])
+				{
+					CaseHistoryItem item;
+					item.date = obj.at("date").get<std::string>();
+					item.time = obj.at("time").get<std::string>();
+					item.status = obj.at("status").get<std::string>();
+					item.publishDate = obj.at("publish_date").get<std::string>();
+					item.publishTime = obj.at("publish_time").get<std::string>();
+					details.history.push_back(std::move(item));
+				}
+
+				return details;
+			}
 			else
 				std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
@@ -112,21 +142,4 @@ nlohmann::json getCaseDetails(boost::asio::io_context& asioContext,
 	else
 		throw std::runtime_error(
 		    fmt::format("failed to retrieve JSON (server returned code {})", status));
-}
-
-std::vector<CaseHistoryItem> parseHistory(const nlohmann::json& details)
-{
-	std::vector<CaseHistoryItem> items;
-	const auto& history = details.at("history");
-	for (const auto& obj : history)
-	{
-		CaseHistoryItem item;
-		item.date = obj.at("date").get<std::string>();
-		item.time = obj.at("time").get<std::string>();
-		item.status = obj.at("status").get<std::string>();
-		item.publishDate = obj.at("publish_date").get<std::string>();
-		item.publishTime = obj.at("publish_time").get<std::string>();
-		items.push_back(std::move(item));
-	}
-	return items;
 }

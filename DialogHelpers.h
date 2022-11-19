@@ -2,6 +2,7 @@
 #define COURT_MONITOR_DIALOG_HELPERS_H
 
 #include "Logger.h"
+#include "Storage.h"
 
 #include <banana/types.hpp>
 
@@ -13,8 +14,13 @@ namespace statechart = boost::statechart;
 template <class MostDerived, class InitialState>
 struct StateMachine : public statechart::state_machine<MostDerived, InitialState>
 {
-	explicit StateMachine(Dialog& dialog) : dialog(dialog) {}
-	Dialog& dialog;
+	explicit StateMachine(banana::agent::beast_callback& agent, banana::integer_t userId)
+	    : agent(agent), userId(userId)
+	{
+	}
+
+	banana::agent::beast_callback& agent;
+	banana::integer_t userId;
 };
 
 struct BasicState

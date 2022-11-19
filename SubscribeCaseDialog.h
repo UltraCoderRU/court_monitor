@@ -2,13 +2,18 @@
 #define COURT_MONITOR_SUBSCRIBE_CASE_DIALOG_H
 
 #include "Dialog.h"
+#include "Storage.h"
+
+#include <banana/agent/beast.hpp>
 
 struct SubscribeCaseStateMachine;
 
 class SubscribeCaseDialog : public Dialog
 {
 public:
-	SubscribeCaseDialog(banana::agent::beast_callback& agent, banana::integer_t userId);
+	SubscribeCaseDialog(banana::agent::beast_callback& agent,
+	                    banana::integer_t userId,
+	                    LocalStorage& storage);
 	~SubscribeCaseDialog() override;
 
 	bool processMessage(const banana::api::message_t& message) override;

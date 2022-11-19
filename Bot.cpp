@@ -94,31 +94,30 @@ void Bot::processUpdate(const banana::api::update_t& update)
 		else
 			LOG(bot, "incoming message: user={} (not text)", userId);
 
-		auto sessionIt = sessions_.find(userId);
-		if (sessionIt == sessions_.end())
-		{
-			bool ok;
-			std::tie(sessionIt, ok) =
-			    sessions_.emplace(std::piecewise_construct, std::forward_as_tuple(userId),
-			                      std::forward_as_tuple(agent_, userId));
-		}
-		sessionIt->second.processMessage(*update.message);
+		auto& session = getOrCreateSession(userId);
+		session.processMessage(*update.message);
 	}
 	else if (update.callback_query)
 	{
 		banana::integer_t userId = update.callback_query->from.id;
 		LOG(bot, "incoming callback query: user={} data='{}'", userId, *update.callback_query->data);
 
-		auto sessionIt = sessions_.find(userId);
-		if (sessionIt == sessions_.end())
-		{
-			bool ok;
-			std::tie(sessionIt, ok) =
-			    sessions_.emplace(std::piecewise_construct, std::forward_as_tuple(userId),
-			                      std::forward_as_tuple(agent_, userId));
-		}
-		sessionIt->second.processCallbackQuery(*update.callback_query);
+		auto& session = getOrCreateSession(userId);
+		session.processCallbackQuery(*update.callback_query);
 	}
 	else
 		LOG(bot, "skip unknown update type");
+}
+
+BotSession& Bot::getOrCreateSession(banana::integer_t userId)
+{
+	auto sessionIt = sessions_.find(userId);
+	if (sessionIt == sessions_.end())
+	{
+		bool ok;
+		std::tie(sessionIt, ok) =
+		    sessions_.emplace(std::piecewise_construct, std::forward_as_tuple(userId),
+		                      std::forward_as_tuple(agent_, userId, storage_));
+	}
+	return sessionIt->second;
 }
