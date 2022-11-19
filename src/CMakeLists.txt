@@ -1,0 +1,18 @@
+add_executable(court_monitor
+	Bot.cpp
+	BotSession.cpp
+	CourtApi.cpp
+	Dialog.cpp
+	Logger.cpp
+	Storage.cpp
+	SubscribeCaseDialog.cpp
+	main.cpp
+)
+target_link_libraries(court_monitor
+	banana-beast
+	fmt::fmt
+	nlohmann_json::nlohmann_json
+	certify::core
+	Boost::system
+	${OPENSSL_LIBRARIES}
+)
