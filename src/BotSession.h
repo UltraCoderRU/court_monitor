@@ -14,7 +14,9 @@ class Dialog;
 class BotSession final
 {
 public:
-	BotSession(banana::agent::beast_callback& agent, banana::integer_t userId, LocalStorage& storage);
+	BotSession(banana::agent::beast_async_monadic& agent,
+	           banana::integer_t userId,
+	           LocalStorage& storage);
 	~BotSession();
 
 	void processMessage(const banana::api::message_t& message);
@@ -30,7 +32,7 @@ private:
 	void processStartCommand();
 	void processStopCommand();
 
-	banana::agent::beast_callback& agent_;
+	banana::agent::beast_async_monadic& agent_;
 	banana::integer_t userId_;
 	LocalStorage& storage_;
 	std::unique_ptr<Dialog> activeDialog_;

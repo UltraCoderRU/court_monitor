@@ -32,7 +32,9 @@ struct SubscriptionConfirmed : statechart::event<SubscriptionConfirmed> { };
 
 struct SubscribeCaseStateMachine : StateMachine<SubscribeCaseStateMachine, WaitingForInput>
 {
-	SubscribeCaseStateMachine(banana::agent::beast_callback& agent, long userId, LocalStorage& storage)
+	SubscribeCaseStateMachine(banana::agent::beast_async_monadic& agent,
+	                          long userId,
+	                          LocalStorage& storage)
 	    : StateMachine(agent, userId), storage(storage)
 	{
 	}
@@ -52,7 +54,7 @@ struct WaitingForInput : State<WaitingForInput, SubscribeCaseStateMachine>
 		auto& machine = context<SubscribeCaseStateMachine>();
 		std::string text = "Введите номер дела...";
 		banana::api::send_message(machine.agent,
-		                          {.chat_id = machine.userId, .text = std::move(text)}, [](auto) {});
+		                          {.chat_id = machine.userId, .text = std::move(text)});
 	}
 
 	statechart::result react(const NewMessageEvent& event)
@@ -70,8 +72,8 @@ struct WaitingForInput : State<WaitingForInput, SubscribeCaseStateMachine>
 			std::string text =
 			    "Некорректный формат номера дела!\n"
 			    "Попробуйте еще раз.";
-			banana::api::send_message(
-			    machine.agent, {.chat_id = machine.userId, .text = std::move(text)}, [](auto) {});
+			banana::api::send_message(machine.agent,
+			                          {.chat_id = machine.userId, .text = std::move(text)});
 			return discard_event();
 		}
 	}
@@ -108,8 +110,7 @@ struct GettingCaseDetails : State<GettingCaseDetails, SubscribeCaseStateMachine>
 
 			banana::api::send_message(
 			    machine.agent,
-			    {.chat_id = machine.userId, .text = std::move(text), .reply_markup = keyboard},
-			    [](auto) {});
+			    {.chat_id = machine.userId, .text = std::move(text), .reply_markup = keyboard});
 
 			post_event(CaseDetailsFetched());
 		}
@@ -139,14 +140,8 @@ struct WaitingForConfirmation : State<WaitingForConfirmation, SubscribeCaseState
 		{
 			if (event.query.message)
 				banana::api::edit_message_reply_markup(
-				    machine.agent,
-				    {.chat_id = event.query.message->chat.id,
-				     .message_id = event.query.message->message_id},
-				    [](banana::expected<banana::variant_t<banana::api::message_t, banana::boolean_t>> result)
-				    {
-					    if (!result)
-						    LOGE(dialog, result.error());
-				    });
+				    machine.agent, {.chat_id = event.query.message->chat.id,
+				                    .message_id = event.query.message->message_id});
 
 			if (*event.query.data == "yes")
 			{
@@ -174,7 +169,7 @@ struct Subscribed : State<Subscribed, SubscribeCaseStateMachine, true>
 
 /////////////////////////////////////////////////////////////////////////////
 
-SubscribeCaseDialog::SubscribeCaseDialog(banana::agent::beast_callback& agent,
+SubscribeCaseDialog::SubscribeCaseDialog(banana::agent::beast_async_monadic& agent,
                                          banana::integer_t userId,
                                          LocalStorage& storage)
     : Dialog(userId, "SubscribeCase"),

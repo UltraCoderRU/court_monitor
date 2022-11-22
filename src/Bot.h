@@ -29,7 +29,7 @@ private:
 
 	LocalStorage& storage_;
 	bool& terminationFlag_;
-	banana::agent::beast_callback agent_;
+	banana::agent::beast_async_monadic agent_;
 	std::int64_t updatesOffset_ = 0;
 	std::map<banana::integer_t, BotSession> sessions_;
 };

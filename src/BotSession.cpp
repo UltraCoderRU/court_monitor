@@ -7,7 +7,7 @@
 #include <banana/api.hpp>
 #include <fmt/core.h>
 
-BotSession::BotSession(banana::agent::beast_callback& agent,
+BotSession::BotSession(banana::agent::beast_async_monadic& agent,
                        banana::integer_t userId,
                        LocalStorage& storage)
     : agent_(agent), userId_(userId), storage_(storage)

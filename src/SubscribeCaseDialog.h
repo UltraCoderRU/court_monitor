@@ -11,7 +11,7 @@ struct SubscribeCaseStateMachine;
 class SubscribeCaseDialog : public Dialog
 {
 public:
-	SubscribeCaseDialog(banana::agent::beast_callback& agent,
+	SubscribeCaseDialog(banana::agent::beast_async_monadic& agent,
 	                    banana::integer_t userId,
 	                    LocalStorage& storage);
 	~SubscribeCaseDialog() override;

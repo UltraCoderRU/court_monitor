@@ -51,8 +51,7 @@ void Bot::notifyUser(UserId userId,
 	    "{}\n"
 	    "Дата: {} {}\n",
 	    caseNumber, caseUrl, item.status, item.date, item.time);
-	banana::api::send_message(agent_, {.chat_id = userId, .text = message, .parse_mode = "markdown"},
-	                          [](const auto&) {});
+	banana::api::send_message(agent_, {.chat_id = userId, .text = message, .parse_mode = "markdown"});
 }
 
 void Bot::getUpdates()

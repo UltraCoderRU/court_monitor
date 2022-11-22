@@ -14,12 +14,12 @@ namespace statechart = boost::statechart;
 template <class MostDerived, class InitialState>
 struct StateMachine : public statechart::state_machine<MostDerived, InitialState>
 {
-	explicit StateMachine(banana::agent::beast_callback& agent, banana::integer_t userId)
+	explicit StateMachine(banana::agent::beast_async_monadic& agent, banana::integer_t userId)
 	    : agent(agent), userId(userId)
 	{
 	}
 
-	banana::agent::beast_callback& agent;
+	banana::agent::beast_async_monadic& agent;
 	banana::integer_t userId;
 };
 
